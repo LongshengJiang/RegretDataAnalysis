@@ -1,4 +1,4 @@
-# RegretAnalysis
+# RegretDataAnalysis
 This package provides a set of tools for analyzing the data measured in the RegretMeasurement-GUI.  
 
 The folder structure must be maintained the same during downloading. The content should be downloaded to the same folder (directory). 
