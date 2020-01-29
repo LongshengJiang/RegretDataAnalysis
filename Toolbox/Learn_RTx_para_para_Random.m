@@ -61,64 +61,76 @@ load(['../Database/' filename TrialNum 'OutcomeScaleMeasure.mat']);
 % =========================================================================
 % Random search for the best probability weighting function
 % =========================================================================
-% Define the total points to be searched.
-SearchCap = 200000;
-Loosen   = 0;
 
-% Define and initialize a 5-D vector as weighted probabilities for original
-% probability vector [0, 0.25, 0.5, 0.75, 1].
-OrigProbVec = [0, 0.25, 0.5, 0.75, 1];
-ThetaVec = -1*ones(1,5);
-    
-% Define RT performance matrix, the first 5 column is ThetaVec, while the
+
+% Define the total points to be searched.
+SearchCap = 2000;
+Loosen    = 0;
+
+% Define RT performance matrix, the first 2 column is beta_vec, while the
 % is the amount of correct predictions
-RT_Performance = -1*ones(SearchCap, 6);
+RTx_Performance = -1*ones(SearchCap, 5);
 
 % Search  for the optimal parameters
 for i = 1:SearchCap
     
-    % Randomly select a ThetaVec
-        % Uniformly randomly select the first element of ThetaVec.
-        Theta000 = rand;
-        ThetaVec(1) = Theta000;
+    disp([num2str(i) '/' num2str(SearchCap)]);
+    % Randomly select a value for the parameter beta1
+        % Uniformly randomly select a value for log_beta1 from 6*[-0.5, 0.5].
+        log_beta1 = 6* ( rand - 1/2 );
+        beta1 = exp( log_beta1 );
 
-        % Use the monotonicity of probaility weighting function
-        % and uniformaly randomly select the second element of ThetaVec.
-        Theta025 = rand * (1 - Theta000) + Theta000;
-        ThetaVec(2) = Theta025;
-    
-        % Use the monotonicity of probaility weighting function
-        % and uniformaly randomly select the third element of ThetaVec.
-        Theta050 = rand * (1 - Theta025) + Theta025;
-        ThetaVec(3) = Theta050;
-        
-        % Use the monotonicity of probaility weighting function
-        % and uniformaly randomly select the fourth element of ThetaVec.
-        Theta075 = rand * (1 - Theta050) + Theta050;
-        ThetaVec(4) = Theta075;
-        
-        % Use the monotonicity of probaility weighting function
-        % and uniformaly randomly select the fourth element of ThetaVec.
-        Theta100 = rand * (1 - Theta075) + Theta075;
-        ThetaVec(5) = Theta100;
-    
-    % Error proof
-    if min(ThetaVec) < 0
-        error('ThetaVec is not defined.')
-    end
+        % Uniformly randomly select a value for log_beta2 from 6* [-0.5, 0.5].
+        log_beta2 = 6 * ( rand - 1/2 );
+        beta2 = exp( log_beta2 );
+      
+        % Uniformly randomly select a value for beta3 from [0, 0.5].
+        beta3 = rand;
+       
+        % Uniformly randomly select a value for beta3 from [0.5, 1].
+        beta4 = min( rand*0.5 +0.5, 1-beta3 );
+
+        % Pack the beta parameters into a vector
+        beta_vec = [beta1, beta2, beta3, beta4];
     
     % Calculate the coordinates of points on the Q-function    
-    [ Q_x1, Q_y1 ] = GetQ_LearnP( DataQ, ThetaVec);
+    [ Q_x1, Q_y1 ] = GetQ_LearnP_para( DataQ, beta_vec);
+    
+%     % Interpolate the term Q ( C(0) - C(x_H)) as Q_0H. The
+%     % property Q(-delta) = -Q(delta) is used here. 
+%     Q_0H_Vec = -1 * interp1(Q_x1, Q_y1, c_H_Vec, 'linear', 'extrap');
+% 
+%     % Interpolate the term Q ( C(R) - C(x_H)) as Q_RH
+%     Q_RH_Vec = interp1(Q_x1, Q_y1, c_R_Vec - c_H_Vec, 'linear', 'extrap');
 
-    % Interpolate the term Q ( C(0) - C(x_H)) as Q_0H. The
-    % property Q(-delta) = -Q(delta) is used here. 
-    Q_0H_Vec = -1 * interp1(Q_x1, Q_y1, c_H_Vec, 'linear', 'extrap');
-
+    % do regression on the indifference points (Q_x1, Q_y1)
+    % We use the parametric q function:
+    %           q = alpha1 * sinh(alpha2 * Q_x1) + alpha3 * Q_x1 
+    %
+    Q_fittype = fittype('alpha1 * sinh( alpha2 * Q_x1 ) + alpha3 * Q_x1 ',...
+                            'independent','Q_x1', 'dependent', 'Q_y1');
+    
+    Q_FunctionFit = fit(Q_x1', Q_y1', Q_fittype,...
+                                 'StartPoint', [1, 1, 1],...
+                                 'Lower', [0, 0, 0],...
+                                 'Upper', [10, 20, 500]);                    
+    
+    % Compute the term Q ( C(0) - C(x_H)) as Q_0H. 
+    Q_0H_Vec_col = Q_FunctionFit( -c_H_Vec );
+    Q_0H_Vec = Q_0H_Vec_col';
+    
     % Interpolate the term Q ( C(R) - C(x_H)) as Q_RH
-    Q_RH_Vec = interp1(Q_x1, Q_y1, c_R_Vec - c_H_Vec, 'linear', 'extrap');
-
+    Q_RH_Vec_col = Q_FunctionFit( c_R_Vec - c_H_Vec);
+    Q_RH_Vec = Q_RH_Vec_col';
+    
+    
     % Get the decision weight from probability weight function
-    Pi_Prob_Vec = interp1(OrigProbVec, ThetaVec, Prob_Vec);
+    % We use the parametric w-function:
+    %           w = exp( -beta1 * ( -log( p ) )^beta2 )
+    w_FunctionFit = @(p, beta) ...
+                        beta(3) + beta(4) .* exp( -beta(1) .* ( -log(p) ).^ beta(2) );
+    
+    Pi_Prob_Vec = w_FunctionFit( Prob_Vec, beta_vec);
 
     % Calculate the net advantage e_Q for all questions as e_Q_Vec
     e_Q_Vec = Pi_Prob_Vec .* Q_0H_Vec ...
@@ -148,30 +160,30 @@ for i = 1:SearchCap
                        + AmountCorrectEitherOK_RT;
 
     % Store the information in to the RT performance matrix
-    RT_Performance(i,:) =...
-        [ThetaVec, AmountCorrect_RT];
+    RTx_Performance(i,:) =...
+        [beta_vec, AmountCorrect_RT];
 
    
 end
 
 % Find the optimal parameters
-MaxAmount_RT = max(RT_Performance(:, end)) - Loosen;
-MaxAmountIndx = find(RT_Performance(:, end) == MaxAmount_RT);
+MaxAmount_RTx = max(RTx_Performance(:, end))-Loosen;
+MaxAmountIndx = find(RTx_Performance(:, end) >= MaxAmount_RTx);
 
-ThetaVec_star = RT_Performance(MaxAmountIndx, 1:end-1);
-Num_Theta_star = size(ThetaVec_star, 1);
+beta_vec_star = RTx_Performance(MaxAmountIndx, 1:end-1);
+Num_Theta_star = size(beta_vec_star, 1);
 
 % Display
 disp('Maximum Amount of correct prediction by RT:');
-disp(MaxAmount_RT);
+disp(MaxAmount_RTx);
 disp('Optimal parameters');    
-disp(ThetaVec_star);    
+disp(beta_vec_star);    
 
 % ==================================================================
 % Among the optimal parameters find the set giving best Q-shape
 % ==================================================================
 
-Q_fittype = fittype('s_t*Q_x1+s_r*sinh(s_l*Q_x1)',...
+Q_fittype = fittype('alpha1 * sinh( alpha2 * Q_x1 ) + alpha3 * Q_x1 ',...
                             'independent','Q_x1', 'dependent', 'Q_y1');
 
 Q_fitCell = cell(Num_Theta_star, 1);
@@ -179,14 +191,20 @@ Q_fit_rsquare = -1*ones(Num_Theta_star, 1);
 
 warning('off', 'all');
 
+disp('Num_Theta_star:');
+disp(Num_Theta_star);
+waitforbuttonpress;
+
 for i = 1: Num_Theta_star
     
-    [ Q_x1, Q_y1 ] = GetQ_LearnP( DataQ, ThetaVec_star(i,:));
+    disp([num2str(i) '/' num2str(Num_Theta_star)] );
+    
+    [ Q_x1, Q_y1 ] = GetQ_LearnP_para( DataQ, beta_vec_star(i,:));
     
     [Q_FunctionFit, GoF] = fit(Q_x1', Q_y1', Q_fittype,...
-                                     'StartPoint', [1, 1, 1],...
-                                     'Lower', [0, 0, 0],...
-                                     'Upper', [10, 20, 500]);
+                                 'StartPoint', [1, 1, 1],...
+                                 'Lower', [0, 0, 0],...
+                                 'Upper', [20, 30, 500]);
     
     Q_fitCell{i} = Q_FunctionFit;
     Q_fit_rsquare(i) = GoF.rsquare;
@@ -197,14 +215,28 @@ end
 BestFit_rsquare = max(Q_fit_rsquare);
 BestFitIndx_rsquare= find(Q_fit_rsquare == BestFit_rsquare);
 
-ThetaVec_2stars = ThetaVec_star(BestFitIndx_rsquare, :);
-Num_Theta_2stars = size(ThetaVec_2stars, 1);
+beta_vec_2stars = beta_vec_star(BestFitIndx_rsquare, :);
+Num_Theta_2stars = size(beta_vec_2stars, 1);
 
-% Display
+% Plot the optimal w function
+w_Plot_p = linspace(0, 1, 50);
+plot(w_Plot_p, w_FunctionFit(w_Plot_p, beta_vec_2stars));
+hold on;
+plot([0,1], [0,1]);
+hold off;
+% Plot the optimal q function
+figure;
+[ Q_x1, Q_y1 ] = GetQ_LearnP_para( DataQ, beta_vec_2stars);
+plot(Q_fitCell{BestFitIndx_rsquare}, Q_x1, Q_y1);
+
+ % Display
+disp('Maximum Amount of correct prediction by RT:');
+disp(MaxAmount_RTx);
+disp(Q_fitCell{BestFitIndx_rsquare});
 disp('R-square of the best fit');
 disp(BestFit_rsquare);
 disp('Final Optimal parameters');    
-disp(ThetaVec_2stars);
+disp(beta_vec_2stars);
 
 % =========================================================================
 % The peroformance of EV

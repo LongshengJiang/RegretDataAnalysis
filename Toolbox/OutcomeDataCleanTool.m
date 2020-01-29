@@ -1,14 +1,10 @@
-function OutcomeDataCleanTool(filename, RowIndx)
-% OutcomeDataCleanTool(filename, RowIndx) visualizes the change of outcomes
-% within module 1 and 2. 
-% Inputs: 
-%       filename refers to the ID code of the dataset,
-%       RowIndx refers to the row of ResultArray which stores the regret
-%       data. 
-% For example: 
-%       OutcomeDataCleanTool('Sample', 2) shows the plot of the
-%       outcomes within the 2nd module. 
+clear;
+close all;
 
+RowIndx = 2;
+
+% Refer to the specific data set.
+filename = 'YG'; 
 
 % Load the data file
 TrialNum = ['_' num2str(1)];
