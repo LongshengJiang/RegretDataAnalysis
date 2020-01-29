@@ -24,4 +24,6 @@ The SupplementaryPrograms stores some subroutines of the tools, so be careful to
 
 The Gallery folder is used to store all the figures you may make.
 
-Any questions? please contact longshj@g.clemson.edu. 
+This tutorial may be confusing. Since I do not expect there are many of you would like to download these files, I do not take the effort to write a clear tutorial. But you really want to use them, I am more than happy to assist you. Just shoot me an email at the following address. 
+
+Please contact longshj@g.clemson.edu. 
